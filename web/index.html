@@ -145,9 +145,7 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
     <canvas id="fan" aria-label="模擬走勢扇形圖"></canvas>
     <div class="legend"><span><i style="border-color:var(--critical)"></i>停損價</span><span><i style="border-color:var(--good)"></i>停利啟動價</span><span><i style="border-color:var(--ink3);border-top-style:solid"></i>買進價</span><span>藍線＝40 條模擬路徑</span></div>
 
-    <h2 style="margin-top:16px">技術面與歷史同狀態結果</h2>
-    <div id="ta-kv"></div>
-    <div class="note" id="ta-note"></div>
+    <div class="note" id="ta-note" hidden></div>
 
     <h2 style="margin-top:16px">部位建議（控制風險，不是重壓）</h2>
     <div class="grid">
@@ -188,13 +186,8 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
     </div>
     <div class="grid" style="margin-top:10px">
       <div><label>排序</label><select id="f-sort"><option value="mix">綜合（燈號 → 期望值）</option><option value="sl">停損被掃機率 低→高</option><option value="ev">扣費後期望值 高→低</option><option value="w">獲利機率 高→低</option><option value="a">成交金額 大→小</option></select></div>
-      <div><label>技術面狀態</label><select id="f-ta"><option value="">全部</option><option value="bull_align">多頭排列 5>10>20>60</option><option value="bull_strong">DMI 多方強勢（ADX>25）</option><option value="bear_strong">DMI 空方強勢（ADX>25）</option><option value="range">盤整（ADX<20）</option><option value="other">其他</option></select></div>
-    </div>
-    <div class="grid" style="margin-top:10px">
       <div><label>只看這些代號（選填）</label><input type="text" id="f-codes" inputmode="numeric" placeholder="2330 2454 …"></div>
-      <div></div>
     </div>
-    <div class="note" id="ta-filter-note" hidden></div>
     <button class="btn secondary" id="rescan">用上面的規則重算目前篩選結果</button>
     <div class="status" id="scan-status"></div>
     <div class="tbl-wrap"><table id="scan-tbl" hidden>
@@ -361,31 +354,11 @@ function taState(bars){
   v.st = (v.pdi < v.mdi && v.adx > 25) ? 'bear_strong' : v.al ? 'bull_align' : (v.pdi > v.mdi && v.adx > 25) ? 'bull_strong' : v.adx < 20 ? 'range' : 'other';
   return v;
 }
-function taStatsHtml(st, P){
-  const s = TA_STATS.states[st], a = TA_STATS.states.all;
-  if (!s) return '';
-  const near = (P.sl >= 0.125 && P.arm >= 0.125) ? 'B' : 'A';
-  const row = (k, label) => `<div class="ta-item"><small>${label}${near === k ? '（≈你現在的設定）' : ''}</small>勝率 <b>${pct(s[k].win,0)}</b>（全部 ${pct(a[k].win,0)}）· 平均 <b>${spct(s[k].avg)}</b>（全部 ${spct(a[k].avg)}）<br>停損率 ${pct(s[k].sl,0)}（全部 ${pct(a[k].sl,0)}）· 2026 年勝率 ${pct(s[k].win26,0)}</div>`;
-  return row('A', '停損 10％／啟動 10％／20 天') + row('B', '停損 15％／啟動 15％／30 天');
-}
 function renderTA(bars, P){
-  const t = taState(bars);
-  if (!t){ $('ta-kv').innerHTML = '<div class="ta-item muted">資料不足 61 天，無法計算技術面</div>'; $('ta-note').textContent = ''; return; }
-  const arrow = t.adx3 !== null && t.adx > t.adx3 ? '↑' : '↓';
-  const maTxt = t.al ? '5＞10＞20＞60 多頭排列' : `${t.a20 ? '站上' : '跌破'} 20MA、${t.a60 ? '站上' : '跌破'} 60MA`;
-  $('ta-kv').innerHTML = `
-    <div class="ta-item"><small>DMI(14)</small>+DI ${t.pdi.toFixed(1)} ／ −DI ${t.mdi.toFixed(1)} ／ ADX ${t.adx.toFixed(1)} ${arrow} → <b>${TA_NAME[t.st]}</b></div>
-    <div class="ta-item"><small>均線</small>${maTxt}，距 20MA ${spct(t.d20)}，20 日漲跌 ${spct(t.r20)}</div>
-    <div class="ta-item"><small>RSI(14)</small>${t.rsi.toFixed(0)}${t.rsi > 70 ? '（過熱）' : t.rsi < 30 ? '（超賣）' : ''}</div>
-    <div class="ta-head">「${TA_NAME[t.st]}」這個狀態在過去的實際結果</div>
-    <div class="hint" style="margin-top:0">${TA_STATS.universe}，${TA_STATS.period}，${TA_STATS.states[t.st].A.n.toLocaleString()} 筆</div>
-    ${taStatsHtml(t.st, P)}`;
-  const s = TA_STATS.states[t.st];
-  let note = '';
-  if (t.st === 'bull_align' || t.st === 'bull_strong') note = `強勢股配 −10% 停損在歷史上有 ${pct(s.A.sl,0)} 的機率先被掃出場；同樣的進場點改用 15／15／30，勝率 ${pct(s.B.win,0)}、平均 ${spct(s.B.avg)}。如果你是看均線和 DMI 選強勢股，停損要放寬，部位要跟著縮小。`;
-  else if (t.st === 'bear_strong') note = `空方強勢的 ${pct(s.A.win,0)} 勝率主要來自 2025 年 4 月那種 V 型反彈；拿掉那個月只剩約 49%，不要把它當成穩定優勢。`;
-  else note = `這個狀態的歷史結果跟「全部進場點」差不多，技術面在這裡沒有給出額外資訊。`;
-  $('ta-note').textContent = note + ' 這些是多頭期間的統計，不保證未來。';
+  const t = taState(bars); const el = $('ta-note');
+  if (!t){ el.hidden = true; return; }
+  const s = TA_STATS.states[t.st], a = TA_STATS.states.all; el.hidden = false;
+  el.innerHTML = `技術面狀態：<b>${TA_NAME[t.st]}</b>（+DI ${t.pdi.toFixed(0)}／−DI ${t.mdi.toFixed(0)}／ADX ${t.adx.toFixed(0)}）。這類狀態在過去 ${TA_STATS.states.all.A.n.toLocaleString()} 筆進場點裡，被 −10% 停損掃出場的比例 <b>${pct(s.A.sl,0)}</b>（全部 ${pct(a.A.sl,0)}）；改用 15／15／30 則是 ${pct(s.B.sl,0)}（全部 ${pct(a.B.sl,0)}）。技術面對方向沒有可靠的預測力，只用來看停損風險。`;
 }
 document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { const [sl, arm, hold] = b.dataset.preset.split(','); $('sl').value = sl; $('arm').value = arm; $('hold').value = hold; if (last) $('run').click(); }));
 
@@ -578,8 +551,7 @@ function filtered(){
   if (!SCAN) return [];
   const mkt = $('f-mkt').value, pmax = parseFloat($('f-price').value), amin = parseFloat($('f-amt').value) || 0;
   const codes = $('f-codes').value.split(/[^\d]+/).filter(c => /^\d{4}$/.test(c));
-  const ta = $('f-ta').value;
-  let rows = SCAN.filter(s => (!mkt || s.m === mkt) && (!(pmax > 0) || s.p <= pmax) && s.a >= amin && (!codes.length || codes.includes(s.c)) && (!ta || s.st === ta));
+  let rows = SCAN.filter(s => (!mkt || s.m === mkt) && (!(pmax > 0) || s.p <= pmax) && s.a >= amin && (!codes.length || codes.includes(s.c)));
   if (custom) rows = rows.map(s => custom[s.c] ? Object.assign({}, s, custom[s.c]) : s);
   const k = $('f-sort').value;
   const grp = s => (s.sl < 0.30 && s.ev > 0) ? 0 : s.sl < 0.30 ? 1 : s.sl < 0.50 ? 2 : 3;
@@ -593,7 +565,7 @@ function renderScanTable(){
     const lv = riskLevel(r.sl);
     const tag = lv === 'good' && r.ev > 0 ? '<span class="tag good">🟢 低</span>' : lv === 'good' ? '<span class="tag neutral">🟢 低・EV負</span>' : lv === 'warn' ? '<span class="tag warn">🟡 中</span>' : '<span class="tag critical">🔴 太緊</span>';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b>${r.n}</b><br><small>${r.c}${r.m==='TWO'?' 櫃':''} · ${r.a >= 1000 ? (r.a/1000).toFixed(1)+'億' : r.a.toFixed(0)+'百萬'}</small></td><td>${r.p}</td><td>${pct(r.sl,0)}</td><td class="${r.ev>=0?'pos':'neg'}">${spct(r.ev)}</td><td>${tag}<br><small class="muted">${TA_NAME[r.st] || ''}${r.adx ? ' ADX' + r.adx.toFixed(0) : ''}</small>${r._custom?'<br><small>新規則</small>':''}</td>`;
+    tr.innerHTML = `<td><b>${r.n}</b><br><small>${r.c}${r.m==='TWO'?' 櫃':''} · ${r.a >= 1000 ? (r.a/1000).toFixed(1)+'億' : r.a.toFixed(0)+'百萬'}</small></td><td>${r.p}</td><td>${pct(r.sl,0)}</td><td class="${r.ev>=0?'pos':'neg'}">${spct(r.ev)}</td><td>${tag}${r._custom?'<br><small>新規則</small>':''}</td>`;
     tr.style.cursor = 'pointer';
     tr.addEventListener('click', () => { $('code').value = r.c; $('buy').value = ''; $('run').click(); window.scrollTo({top:0, behavior:'smooth'}); });
     tb.appendChild(tr);
@@ -601,13 +573,7 @@ function renderScanTable(){
   $('more').hidden = rows.length <= shown;
   $('scan-status').textContent = `符合條件 ${rows.length} 檔，顯示前 ${Math.min(shown, rows.length)} 檔${custom ? '（部分已用新規則重算）' : ''}。`;
 }
-for (const id of ['f-mkt','f-price','f-amt','f-sort','f-codes','f-ta']) $(id).addEventListener('input', () => { shown = 50; renderScanTable(); });
-$('f-ta').addEventListener('input', () => {
-  const st = $('f-ta').value, el = $('ta-filter-note');
-  if (!st){ el.hidden = true; return; }
-  const s = TA_STATS.states[st], a = TA_STATS.states.all; el.hidden = false;
-  el.innerHTML = `<b>${s.name}</b> 在過去的實際結果（${TA_STATS.universe}，${TA_STATS.period}，${s.A.n.toLocaleString()} 筆）：<br>停損10／啟動10／20天：勝率 ${pct(s.A.win,0)}（全部 ${pct(a.A.win,0)}）、平均 ${spct(s.A.avg)}、停損率 ${pct(s.A.sl,0)}<br>停損15／啟動15／30天：勝率 ${pct(s.B.win,0)}（全部 ${pct(a.B.win,0)}）、平均 ${spct(s.B.avg)}、停損率 ${pct(s.B.sl,0)}`;
-});
+for (const id of ['f-mkt','f-price','f-amt','f-sort','f-codes']) $(id).addEventListener('input', () => { shown = 50; renderScanTable(); });
 $('more').addEventListener('click', () => { shown += 50; renderScanTable(); });
 $('rescan').addEventListener('click', async () => {
   const rows = filtered().slice(0, 400);
