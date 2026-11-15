@@ -1,0 +1,57 @@
+name: 每日更新台股資料並部署網站
+
+on:
+  schedule:
+    # 台北時間 15:40 與 18:10（UTC+8），週一到週五；收盤後證交所約 14:30、櫃買約 15:00 公布
+    - cron: '40 7 * * 1-5'
+    - cron: '10 10 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安裝套件
+        run: pip install -q numpy pandas yfinance
+
+      - name: 抓取最近交易日資料（證交所＋櫃買中心）
+        run: python scripts/fetch_daily.py --days 110
+
+      - name: 把新資料存回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "data: $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
+
+      - name: 全市場模擬並產生網站
+        run: python scripts/build_site.py
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
