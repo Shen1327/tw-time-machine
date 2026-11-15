@@ -33,6 +33,43 @@ def load_daily():
     return stocks, files
 
 
+def wilder(s, n):
+    return s.ewm(alpha=1 / n, adjust=False).mean()
+
+
+def ta_state(df):
+    """最新一天的技術面：DMI(14)、RSI(14)、均線排列。回傳 dict 或 None（資料不足）。"""
+    if len(df) < 61:
+        return None
+    h, l, c = df['High'], df['Low'], df['Close']
+    pc = c.shift(1)
+    tr = pd.concat([h - l, (h - pc).abs(), (l - pc).abs()], axis=1).max(axis=1)
+    up = h - h.shift(1); dn = l.shift(1) - l
+    plus_dm = ((up > dn) & (up > 0)) * up
+    minus_dm = ((dn > up) & (dn > 0)) * dn
+    atr = wilder(tr, 14)
+    pdi = 100 * wilder(plus_dm, 14) / atr
+    mdi = 100 * wilder(minus_dm, 14) / atr
+    dx = 100 * (pdi - mdi).abs() / (pdi + mdi).replace(0, np.nan)
+    adx = wilder(dx, 14)
+    delta = c.diff(); gain = wilder(delta.clip(lower=0), 14); loss = wilder(-delta.clip(upper=0), 14)
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+    ma = {n: c.rolling(n).mean().iloc[-1] for n in (5, 10, 20, 60)}
+    last = float(c.iloc[-1])
+    v = dict(pdi=float(pdi.iloc[-1]), mdi=float(mdi.iloc[-1]), adx=float(adx.iloc[-1]), adx3=float(adx.iloc[-4]),
+             rsi=float(rsi.iloc[-1]), al=bool(ma[5] > ma[10] > ma[20] > ma[60]), a20=bool(last > ma[20]), a60=bool(last > ma[60]),
+             d20=float(last / ma[20] - 1), r20=float(last / c.iloc[-21] - 1))
+    if any(x != x for x in (v['pdi'], v['mdi'], v['adx'], v['rsi'])):
+        return None
+    if v['pdi'] < v['mdi'] and v['adx'] > 25: st = 'bear_strong'
+    elif v['al']: st = 'bull_align'
+    elif v['pdi'] > v['mdi'] and v['adx'] > 25: st = 'bull_strong'
+    elif v['adx'] < 20: st = 'range'
+    else: st = 'other'
+    v['st'] = st
+    return v
+
+
 def main():
     t0 = time.time()
     stocks, files = load_daily()
@@ -64,10 +101,13 @@ def main():
         r = summarize(run_rules(paths, buy, **RULES))
         amt20 = float(df['Amt'].tail(20).mean())
         rd = lambda x, k=3: None if x != x else round(float(x), k)  # NaN -> null
+        ta = ta_state(df) or {}
         scan.append(dict(c=code, n=s['name'], m=s['market'], p=buy, a=round(amt20 / 1e6, 1),
                          sl=rd(r['P_停損']), tp=rd(r['P_停利']), to=rd(r['P_到期']),
                          w=rd(r['P_獲利']), ev=rd(r['EV'], 4), h=rd(r['avg_hold'], 1),
-                         p5=rd(r['p5']), asl=rd(r['avg_停損']), atp=rd(r['avg_停利'])))
+                         p5=rd(r['p5']), asl=rd(r['avg_停損']), atp=rd(r['avg_停利']),
+                         st=ta.get('st'), pdi=rd(ta.get('pdi', float('nan')), 1), mdi=rd(ta.get('mdi', float('nan')), 1), adx=rd(ta.get('adx', float('nan')), 1),
+                         rsi=rd(ta.get('rsi', float('nan')), 1), al=ta.get('al'), a20=ta.get('a20'), a60=ta.get('a60'), d20=rd(ta.get('d20', float('nan'))), r20=rd(ta.get('r20', float('nan')))))
     scan.sort(key=lambda x: x['sl'])
     json.dump(scan, open(os.path.join(SITE, 'data', 'scan.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
     meta = dict(asof=asof_iso, days=len(files), stocks=n_bars, scanned=len(scan), rules=RULES,
