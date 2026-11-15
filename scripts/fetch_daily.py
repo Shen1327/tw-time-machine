@@ -109,22 +109,45 @@ def bootstrap_from_yahoo(need_days: int):
         for r in latest[m]:
             codes[r[0]] = (r[1], m)
     tickers = [f"{c}.{'TW' if m == 'tw' else 'TWO'}" for c, (n, m) in codes.items()]
-    print(f'  Yahoo 批次下載 {len(tickers)} 檔（約 5 分鐘）…', flush=True)
-    try:
-        raw = yf.download(tickers, period='9mo', group_by='ticker', auto_adjust=False, progress=False, threads=True)
-    except Exception as e:
-        print(f'  Yahoo 下載失敗：{e}'); return 0
+    n_tw = sum(1 for v in codes.values() if v[1] == 'tw'); n_two = len(codes) - n_tw
+    print(f'  Yahoo 分批下載 {len(tickers)} 檔（約 5～8 分鐘）…', flush=True)
+
+    def grab(batch, threads):
+        """下載一批，回傳 {ticker: DataFrame}；失敗的不在裡面。"""
+        out = {}
+        try:
+            raw = yf.download(batch, period='9mo', group_by='ticker', auto_adjust=False, progress=False, threads=threads)
+        except Exception as e:
+            print(f'  Yahoo 批次失敗：{e}'); return out
+        for tk in batch:
+            try:
+                d = raw[tk].dropna(subset=['Open', 'High', 'Low', 'Close']) if len(batch) > 1 else raw.dropna(subset=['Open', 'High', 'Low', 'Close'])
+            except Exception:
+                continue
+            if len(d) >= 20:
+                out[tk] = d
+        return out
+
+    frames = {}
+    for i in range(0, len(tickers), 150):           # 分批＋間隔，避免被 Yahoo 限流
+        frames.update(grab(tickers[i:i + 150], 4))
+        time.sleep(3)
+    failed = [tk for tk in tickers if tk not in frames]
+    for attempt in range(3):                          # 失敗的休息一下再重試
+        if not failed:
+            break
+        print(f'  第 {attempt + 1} 次重試 {len(failed)} 檔…', flush=True)
+        time.sleep(45)
+        for i in range(0, len(failed), 40):
+            frames.update(grab(failed[i:i + 40], 2))
+            time.sleep(6)
+        failed = [tk for tk in tickers if tk not in frames]
+    print(f'  Yahoo 成功 {len(frames)} 檔，失敗 {len(failed)} 檔')
+
     have = {f[:8] for f in files}
     by_day = {}
-    ok = 0
-    for tk in tickers:
-        try:
-            d = raw[tk].dropna(subset=['Open', 'High', 'Low', 'Close'])
-        except Exception:
-            continue
-        if d.empty:
-            continue
-        ok += 1
+    ok = len(frames)
+    for tk, d in frames.items():
         code = tk.split('.')[0]; name, m = codes[code]
         for idx, r in d.iterrows():
             key = idx.strftime('%Y%m%d')
@@ -137,8 +160,8 @@ def bootstrap_from_yahoo(need_days: int):
     written = 0
     for key in sorted(by_day)[-need_days:]:
         v = by_day[key]
-        if len(v['tw']) < 800 or len(v['two']) < 600:
-            continue  # 太少檔的日子通常是 Yahoo 資料不完整
+        if len(v['tw']) < 0.8 * n_tw or len(v['two']) < 0.8 * n_two:
+            print(f'  {key} 只有上市 {len(v["tw"])}／上櫃 {len(v["two"])} 檔，略過'); continue  # 太少檔的日子通常是 Yahoo 資料不完整
         json.dump({'d': f'{key[:4]}-{key[4:6]}-{key[6:]}', 'tw': v['tw'], 'two': v['two'], 'src': 'yahoo'},
                   open(os.path.join(DAILY, key + '.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
         written += 1
@@ -150,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--days', type=int, default=110, help='要確保存在的最近交易日數')
     ap.add_argument('--max-back', type=int, default=200, help='最多往回看幾個日曆日')
-    ap.add_argument('--max-requests', type=int, default=25, help='單次執行最多向官方抓幾個交易日（太多會被證交所封鎖，剩下的下次再補）')
+    ap.add_argument('--max-requests', type=int, default=12, help='單次執行最多向官方抓幾個交易日（太多會被證交所封鎖，剩下的下次再補）')
     a = ap.parse_args()
     holidays = set(json.load(open(HOLIDAYS))) if os.path.exists(HOLIDAYS) else set()
     have = {f[:8] for f in os.listdir(DAILY) if f.endswith('.json')}
