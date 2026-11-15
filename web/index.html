@@ -70,6 +70,23 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13.5px;margin-top:8px}
 .kv span{color:var(--ink2)}
 .foot{font-size:12px;color:var(--ink3);text-align:center;margin-top:20px;line-height:1.6}
+.pill{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--neutral-bg);color:var(--ink2);margin-left:6px;vertical-align:middle}
+.pill.on{background:var(--good-bg);color:var(--ink)}
+.live-row td{vertical-align:middle}
+.live-row td.nm{white-space:nowrap;padding-right:6px}
+.live-row td.st{white-space:normal;max-width:118px;font-size:12px;line-height:1.3;text-align:right}
+.live-row td.st .tag{white-space:normal;display:inline-block;line-height:1.3;text-align:left}
+.live-row .nm b{font-size:13.5px}
+.live-row .px{font-size:15px;font-weight:600}
+.live-row svg{display:block}
+.muted{color:var(--ink3)}
+.h2row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.h2row h2{margin:0}
+.mini{font-size:12px;color:var(--ink2)}
+.ta-item{padding:7px 0;border-bottom:1px dashed var(--line);font-size:13.5px;line-height:1.45}
+.ta-item small{display:block;color:var(--ink2);font-size:11.5px;margin-bottom:1px}
+.ta-item:last-child{border-bottom:0}
+.ta-head{margin-top:10px;font-size:13px;color:var(--ink);font-weight:600}
 </style>
 </head>
 <body>
@@ -90,6 +107,10 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
       <div><label>最長持有（交易日）</label><input type="number" id="hold" inputmode="numeric" value="20" step="1"></div>
     </div>
     <p class="hint">停利規則：獲利收盤超過啟動 % 之後，任何一天收盤沒有高於前一天就隔天開盤賣出。停損用盤中觸價。</p>
+    <div class="grid" style="margin-top:8px">
+      <button class="btn secondary" style="margin-top:0;padding:8px;font-size:14px" data-preset="10,10,20">我的規則 10／10／20</button>
+      <button class="btn secondary" style="margin-top:0;padding:8px;font-size:14px" data-preset="15,15,30">較寬 15／15／30</button>
+    </div>
     <details>
       <summary>進階設定</summary>
       <div class="grid" style="margin-top:8px">
@@ -124,6 +145,10 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
     <canvas id="fan" aria-label="模擬走勢扇形圖"></canvas>
     <div class="legend"><span><i style="border-color:var(--critical)"></i>停損價</span><span><i style="border-color:var(--good)"></i>停利啟動價</span><span><i style="border-color:var(--ink3);border-top-style:solid"></i>買進價</span><span>藍線＝40 條模擬路徑</span></div>
 
+    <h2 style="margin-top:16px">技術面與歷史同狀態結果</h2>
+    <div id="ta-kv"></div>
+    <div class="note" id="ta-note"></div>
+
     <h2 style="margin-top:16px">部位建議（控制風險，不是重壓）</h2>
     <div class="grid">
       <div><label>短線總資金（元）</label><input type="number" id="capital" inputmode="numeric" value="200000" step="10000"></div>
@@ -131,6 +156,27 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
     </div>
     <div class="kv" id="sizing"></div>
     <div class="note" id="r-note"></div>
+  </div>
+
+  <div class="card" id="live-card">
+    <div class="h2row"><h2>盤中即時 <span class="pill" id="mkt-pill">—</span></h2><span class="mini" id="live-time"></span></div>
+    <label style="margin-top:8px">持股／觀察清單（一行一檔：代號 買價，買價可省略）</label>
+    <textarea id="live-list" placeholder="2330 2350&#10;2303 101.5&#10;6488"></textarea>
+    <div class="grid" style="margin-top:8px">
+      <button class="btn secondary" id="live-refresh" style="margin-top:0">立即更新</button>
+      <button class="btn secondary" id="live-auto" style="margin-top:0">開盤時每 10 秒自動更新：開</button>
+    </div>
+    <div class="status" id="live-status"></div>
+    <div class="tbl-wrap"><table id="live-tbl" hidden>
+      <thead><tr><th>股票</th><th>成交</th><th>漲跌／損益</th><th>狀態</th></tr></thead>
+      <tbody></tbody></table></div>
+    <p class="hint">成交價來自證交所即時行情（約 5 秒延遲），用上面設定的停損 % 與停利啟動 % 判斷：🔴 已跌破停損（觸價單應已成交）、🟠 距停損不到 2%、🟢 已過啟動價——若今天收盤沒有高於昨收，明早開盤賣。收盤後顯示最後一筆。</p>
+    <details>
+      <summary>中繼設定</summary>
+      <label style="margin-top:8px">中繼網址（Cloudflare Worker）</label>
+      <input type="text" id="proxy-url" placeholder="https://xxx.workers.dev">
+      <p class="hint">證交所即時 API 不允許網頁直接跨網域讀取，所以要經過一個自己的中繼。留空會用內建預設值。</p>
+    </details>
   </div>
 
   <div class="card">
@@ -142,8 +188,13 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
     </div>
     <div class="grid" style="margin-top:10px">
       <div><label>排序</label><select id="f-sort"><option value="mix">綜合（燈號 → 期望值）</option><option value="sl">停損被掃機率 低→高</option><option value="ev">扣費後期望值 高→低</option><option value="w">獲利機率 高→低</option><option value="a">成交金額 大→小</option></select></div>
-      <div><label>只看這些代號（選填）</label><input type="text" id="f-codes" inputmode="numeric" placeholder="2330 2454 …"></div>
+      <div><label>技術面狀態</label><select id="f-ta"><option value="">全部</option><option value="bull_align">多頭排列 5>10>20>60</option><option value="bull_strong">DMI 多方強勢（ADX>25）</option><option value="bear_strong">DMI 空方強勢（ADX>25）</option><option value="range">盤整（ADX<20）</option><option value="other">其他</option></select></div>
     </div>
+    <div class="grid" style="margin-top:10px">
+      <div><label>只看這些代號（選填）</label><input type="text" id="f-codes" inputmode="numeric" placeholder="2330 2454 …"></div>
+      <div></div>
+    </div>
+    <div class="note" id="ta-filter-note" hidden></div>
     <button class="btn secondary" id="rescan">用上面的規則重算目前篩選結果</button>
     <div class="status" id="scan-status"></div>
     <div class="tbl-wrap"><table id="scan-tbl" hidden>
@@ -162,6 +213,7 @@ th{color:var(--ink2);font-weight:600;font-size:12px}
         <p><b>風險抓得很準。</b>「會被停損掃出場的機率」校準良好：模擬說 15% 的實際 15%、說 35% 的實際 33%、說 45% 的實際 43%、說 54% 的實際 50%。這才是時光機真正能告訴你的事：這檔的波動配你的停損距離，合不合。</p>
         <p><b>你的規則本身</b>（停損 −10%、獲利超過 +10% 後沒續漲就賣、最長 20 天）在這段期間整體勝率 51%、平均每筆淨報酬 +2.2%。這段是台股多頭，不要直接外推到空頭。</p>
         <p>大盤站上 20 日線、個股站上 20／60 日線這些濾網，在回測裡對勝率都沒有明顯幫助（都在 51% 上下）。</p>
+        <p><b>DMI 與均線（2026-11 補測）。</b>用成交額前 600 檔、2025/3～2026/10、每 3 個交易日一個進場點，共 77,830 筆，看技術面狀態對你規則的真實結果：多頭排列（5>10>20>60）與 DMI 多方強勢（+DI>−DI、ADX>25）的勝率 48%，<b>比不設條件還低</b>，而且停損率最高（37%）——因為強勢股波動大、−10% 停損常被掃；贏的時候賺比較多（平均 +2%）而已。DMI 空方強勢（−DI>+DI、ADX>25）整體 58%，但主要靠 2025 年 4 月的 V 型反彈，拿掉那個月就只剩 49%，不能當作穩定優勢。<b>真正有差的是出場規則</b>：同一批進場點改成「停損 15%／啟動 15%／最長 30 天」，多頭排列的勝率從 48% 變 54%、平均報酬從 +2.1% 變 +4.3%、停損率從 37% 降到 27%。意思是：如果你用均線和 DMI 選強勢股，−10% 的停損對它們太緊。網頁上每檔都會顯示它目前的技術面狀態，以及這個狀態在過去的實際結果。</p>
       </div>
     </details>
   </div>
@@ -281,6 +333,62 @@ const pct = (x, d=1) => (x*100).toFixed(d) + '%';
 const spct = (x, d=1) => { if (Math.abs(x) < 0.5*Math.pow(10,-d-2)) x = 0; return (x >= 0 ? '+' : '') + (x*100).toFixed(d) + '%'; };
 function riskLevel(pSl){ return pSl < 0.30 ? 'good' : pSl < 0.50 ? 'warn' : 'critical'; }
 
+
+// ====================== 技術面（DMI／RSI／均線）與歷史同狀態結果 ======================
+const TA_STATS = {"period": "2025-03～2026-10", "universe": "成交額前 600 檔上市櫃股，每 3 個交易日一個進場點", "n_total": 77830, "rules": {"A": "停損10%／啟動10%／20天", "B": "停損15%／啟動15%／30天"}, "states": {"all": {"name": "全部進場點", "A": {"n": 77830, "win": 0.496, "avg": 0.0154, "med": -0.0012, "sl": 0.313, "win26": 0.502, "avg26": 0.0223}, "B": {"n": 76042, "win": 0.532, "avg": 0.0303, "med": 0.0131, "sl": 0.23, "win26": 0.553, "avg26": 0.0424}}, "bull_align": {"name": "多頭排列（5>10>20>60）", "A": {"n": 17978, "win": 0.483, "avg": 0.0205, "med": -0.0086, "sl": 0.374, "win26": 0.477, "avg26": 0.0219}, "B": {"n": 17322, "win": 0.544, "avg": 0.0427, "med": 0.0239, "sl": 0.267, "win26": 0.549, "avg26": 0.0472}}, "bull_strong": {"name": "DMI 多方強勢（+DI>−DI、ADX>25）", "A": {"n": 9426, "win": 0.487, "avg": 0.0162, "med": -0.0047, "sl": 0.35, "win26": 0.507, "avg26": 0.0261}, "B": {"n": 9202, "win": 0.512, "avg": 0.0299, "med": 0.0051, "sl": 0.27, "win26": 0.541, "avg26": 0.0453}}, "bear_strong": {"name": "DMI 空方強勢（−DI>+DI、ADX>25）", "A": {"n": 10110, "win": 0.576, "avg": 0.0228, "med": 0.023, "sl": 0.226, "win26": 0.557, "avg26": 0.0296}, "B": {"n": 10049, "win": 0.582, "avg": 0.0318, "med": 0.0277, "sl": 0.176, "win26": 0.581, "avg26": 0.0426}}, "range": {"name": "盤整（ADX<20）", "A": {"n": 27931, "win": 0.489, "avg": 0.0125, "med": -0.0031, "sl": 0.292, "win26": 0.506, "avg26": 0.0207}, "B": {"n": 27249, "win": 0.523, "avg": 0.0265, "med": 0.0083, "sl": 0.208, "win26": 0.555, "avg26": 0.0394}}, "other": {"name": "其他", "A": {"n": 12385, "win": 0.471, "avg": 0.0081, "med": -0.0087, "sl": 0.317, "win26": 0.502, "avg26": 0.0196}, "B": {"n": 12220, "win": 0.508, "avg": 0.0203, "med": 0.003, "sl": 0.242, "win26": 0.548, "avg26": 0.0391}}}};
+const TA_NAME = {bull_align:'多頭排列', bull_strong:'DMI 多方強勢', bear_strong:'DMI 空方強勢', range:'盤整', other:'其他'};
+function wilderArr(a, n){ const out = new Array(a.length); let v = null; for (let i = 0; i < a.length; i++){ const x = a[i]; if (x === null || !isFinite(x)){ out[i] = v; continue; } v = v === null ? x : v + (x - v) / n; out[i] = v; } return out; }
+function taState(bars){
+  const n = bars.length; if (n < 61) return null;
+  const c = bars.map(b => b.c), h = bars.map(b => b.h), l = bars.map(b => b.l);
+  const tr = [], pdm = [], mdm = [], gain = [], loss = [];
+  for (let i = 0; i < n; i++){
+    if (i === 0){ tr.push(h[0] - l[0]); pdm.push(0); mdm.push(0); gain.push(0); loss.push(0); continue; }
+    tr.push(Math.max(h[i] - l[i], Math.abs(h[i] - c[i-1]), Math.abs(l[i] - c[i-1])));
+    const up = h[i] - h[i-1], dn = l[i-1] - l[i];
+    pdm.push(up > dn && up > 0 ? up : 0); mdm.push(dn > up && dn > 0 ? dn : 0);
+    const d = c[i] - c[i-1]; gain.push(Math.max(d, 0)); loss.push(Math.max(-d, 0));
+  }
+  const atr = wilderArr(tr, 14), p = wilderArr(pdm, 14), m = wilderArr(mdm, 14);
+  const pdi = p.map((x, i) => atr[i] ? 100 * x / atr[i] : null), mdi = m.map((x, i) => atr[i] ? 100 * x / atr[i] : null);
+  const dx = pdi.map((x, i) => (x === null || mdi[i] === null || x + mdi[i] === 0) ? null : 100 * Math.abs(x - mdi[i]) / (x + mdi[i]));
+  const adx = wilderArr(dx, 14);
+  const g = wilderArr(gain, 14), lo = wilderArr(loss, 14); const rsi = lo[n-1] ? 100 - 100 / (1 + g[n-1] / lo[n-1]) : 100;
+  const ma = k => c.slice(n - k).reduce((s, x) => s + x, 0) / k;
+  const ma5 = ma(5), ma10 = ma(10), ma20 = ma(20), ma60 = ma(60), last = c[n-1];
+  const v = {pdi: pdi[n-1], mdi: mdi[n-1], adx: adx[n-1], adx3: adx[n-4], rsi, al: ma5 > ma10 && ma10 > ma20 && ma20 > ma60, a20: last > ma20, a60: last > ma60, d20: last / ma20 - 1, r20: last / c[n-21] - 1, ma5, ma10, ma20, ma60};
+  if ([v.pdi, v.mdi, v.adx].some(x => x === null || !isFinite(x))) return null;
+  v.st = (v.pdi < v.mdi && v.adx > 25) ? 'bear_strong' : v.al ? 'bull_align' : (v.pdi > v.mdi && v.adx > 25) ? 'bull_strong' : v.adx < 20 ? 'range' : 'other';
+  return v;
+}
+function taStatsHtml(st, P){
+  const s = TA_STATS.states[st], a = TA_STATS.states.all;
+  if (!s) return '';
+  const near = (P.sl >= 0.125 && P.arm >= 0.125) ? 'B' : 'A';
+  const row = (k, label) => `<div class="ta-item"><small>${label}${near === k ? '（≈你現在的設定）' : ''}</small>勝率 <b>${pct(s[k].win,0)}</b>（全部 ${pct(a[k].win,0)}）· 平均 <b>${spct(s[k].avg)}</b>（全部 ${spct(a[k].avg)}）<br>停損率 ${pct(s[k].sl,0)}（全部 ${pct(a[k].sl,0)}）· 2026 年勝率 ${pct(s[k].win26,0)}</div>`;
+  return row('A', '停損 10％／啟動 10％／20 天') + row('B', '停損 15％／啟動 15％／30 天');
+}
+function renderTA(bars, P){
+  const t = taState(bars);
+  if (!t){ $('ta-kv').innerHTML = '<div class="ta-item muted">資料不足 61 天，無法計算技術面</div>'; $('ta-note').textContent = ''; return; }
+  const arrow = t.adx3 !== null && t.adx > t.adx3 ? '↑' : '↓';
+  const maTxt = t.al ? '5＞10＞20＞60 多頭排列' : `${t.a20 ? '站上' : '跌破'} 20MA、${t.a60 ? '站上' : '跌破'} 60MA`;
+  $('ta-kv').innerHTML = `
+    <div class="ta-item"><small>DMI(14)</small>+DI ${t.pdi.toFixed(1)} ／ −DI ${t.mdi.toFixed(1)} ／ ADX ${t.adx.toFixed(1)} ${arrow} → <b>${TA_NAME[t.st]}</b></div>
+    <div class="ta-item"><small>均線</small>${maTxt}，距 20MA ${spct(t.d20)}，20 日漲跌 ${spct(t.r20)}</div>
+    <div class="ta-item"><small>RSI(14)</small>${t.rsi.toFixed(0)}${t.rsi > 70 ? '（過熱）' : t.rsi < 30 ? '（超賣）' : ''}</div>
+    <div class="ta-head">「${TA_NAME[t.st]}」這個狀態在過去的實際結果</div>
+    <div class="hint" style="margin-top:0">${TA_STATS.universe}，${TA_STATS.period}，${TA_STATS.states[t.st].A.n.toLocaleString()} 筆</div>
+    ${taStatsHtml(t.st, P)}`;
+  const s = TA_STATS.states[t.st];
+  let note = '';
+  if (t.st === 'bull_align' || t.st === 'bull_strong') note = `強勢股配 −10% 停損在歷史上有 ${pct(s.A.sl,0)} 的機率先被掃出場；同樣的進場點改用 15／15／30，勝率 ${pct(s.B.win,0)}、平均 ${spct(s.B.avg)}。如果你是看均線和 DMI 選強勢股，停損要放寬，部位要跟著縮小。`;
+  else if (t.st === 'bear_strong') note = `空方強勢的 ${pct(s.A.win,0)} 勝率主要來自 2025 年 4 月那種 V 型反彈；拿掉那個月只剩約 49%，不要把它當成穩定優勢。`;
+  else note = `這個狀態的歷史結果跟「全部進場點」差不多，技術面在這裡沒有給出額外資訊。`;
+  $('ta-note').textContent = note + ' 這些是多頭期間的統計，不保證未來。';
+}
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { const [sl, arm, hold] = b.dataset.preset.split(','); $('sl').value = sl; $('arm').value = arm; $('hold').value = hold; if (last) $('run').click(); }));
+
 // ====================== 單檔模擬 ======================
 let last = null;
 $('run').addEventListener('click', async () => {
@@ -319,6 +427,7 @@ function render({code, name, market, bars, s, P}){
   $('s-hold').textContent = s.hold.toFixed(1) + ' 天';
   $('s-med').textContent = spct(s.med); $('s-p5').textContent = spct(s.p5); $('s-p5').className = 'neg'; $('s-p95').textContent = spct(s.p95); $('s-p95').className = 'pos';
   drawFan(s, P);
+  renderTA(bars, P);
   sizing();
   $('r-note').innerHTML = (s.ev < 0
     ? `<b>扣費後期望值是負的。</b>以這檔近期的波動來看，這組進出場規則平均是賠錢的（停損 ${spct(s.avg[0])}、停利 ${isFinite(s.avg[1])?spct(s.avg[1]):'—'}，再扣手續費與證交稅）。`
@@ -371,13 +480,106 @@ function drawFan(s, P){
 // ====================== 啟動 ======================
 (async function init(){ await loadMeta(); try{ await loadScan(); renderScanTable(); }catch(e){ $('scan-status').textContent = '掃描表載入失敗：' + e.message; } })();
 
+
+// ====================== 盤中即時 ======================
+const DEFAULT_PROXY = '';  // 部署 Worker 後填入 https://xxx.workers.dev
+let liveTimer = null, liveAuto = true, liveHist = {};  // liveHist: code -> [[tlong, price], ...]
+const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v === null ? d : v; }catch(e){ return d; } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, v); }catch(e){} };
+function proxyBase(){ const u = ($('proxy-url').value || DEFAULT_PROXY).trim().replace(/\/+$/, ''); return u; }
+function taipeiNow(){
+  const parts = new Intl.DateTimeFormat('en-US', {timeZone:'Asia/Taipei', hour12:false, weekday:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'}).formatToParts(new Date());
+  const g = t => parts.find(p => p.type === t).value;
+  return {wd: g('weekday'), hm: (+g('hour') % 24) * 60 + +g('minute')};
+}
+function marketOpen(){ const n = taipeiNow(); return !['Sat','Sun'].includes(n.wd) && n.hm >= 9*60 && n.hm <= 13*60 + 35; }
+function parseLiveList(){
+  return $('live-list').value.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(\d{4,6})\s*[,\s]?\s*([\d.]+)?/); return m ? {code: m[1], buy: m[2] ? parseFloat(m[2]) : null} : null; }).filter(Boolean).slice(0, 60);
+}
+async function marketOf(code){
+  if (SCAN){ const s = SCAN.find(x => x.c === code); if (s) return s.m === 'TWO' ? 'otc' : 'tse'; }
+  try{ const r = await fetch(`data/bars/${code}.json`); if (r.ok){ const j = await r.json(); return j.market === 'TWO' ? 'otc' : 'tse'; } }catch(e){}
+  return null;
+}
+const fnum = s => { const v = parseFloat(s); return isFinite(v) ? v : null; };
+function spark(points, w=56, h=18){
+  if (!points || points.length < 2) return '';
+  const ys = points.map(p => p[1]); const lo = Math.min(...ys), hi = Math.max(...ys); const rng = hi - lo || 1;
+  const pts = points.map((p, i) => `${(i/(points.length-1)*w).toFixed(1)},${(h - (p[1]-lo)/rng*(h-2) - 1).toFixed(1)}`).join(' ');
+  const up = ys[ys.length-1] >= ys[0];
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${up ? 'var(--good)' : 'var(--critical)'}" stroke-width="1.5"/></svg>`;
+}
+async function liveRefresh(manual){
+  const list = parseLiveList();
+  lsSet('tm:live', $('live-list').value); lsSet('tm:proxy', $('proxy-url').value);
+  const open = marketOpen();
+  $('mkt-pill').textContent = open ? '開盤中' : '已收盤'; $('mkt-pill').className = 'pill' + (open ? ' on' : '');
+  if (!list.length){ $('live-status').textContent = '請先輸入代號。'; $('live-tbl').hidden = true; return; }
+  if (!proxyBase()){ $('live-status').textContent = '尚未設定中繼網址（見下方「中繼設定」）。'; return; }
+  const chans = [];
+  for (const it of list){ const m = await marketOf(it.code); if (m) chans.push(`${m}_${it.code}.tw`); else chans.push(`tse_${it.code}.tw`, `otc_${it.code}.tw`); }
+  $('live-status').textContent = '更新中…';
+  let data;
+  try{
+    const r = await fetch(`${proxyBase()}/quote?ex_ch=${chans.join('|')}`, {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    data = await r.json();
+  }catch(e){ $('live-status').textContent = '取得即時資料失敗：' + e.message + '（中繼沒開？或證交所暫時無回應）'; return; }
+  const P = readParams();
+  const byCode = {}; for (const q of (data.msgArray || [])) byCode[q.c] = q;
+  const tb = $('live-tbl').querySelector('tbody'); tb.innerHTML = ''; $('live-tbl').hidden = false;
+  let lastT = '';
+  for (const it of list){
+    const q = byCode[it.code];
+    const tr = document.createElement('tr'); tr.className = 'live-row';
+    if (!q){ tr.innerHTML = `<td class="nm"><b>${it.code}</b></td><td colspan="3" class="muted" style="text-align:left">查無即時資料</td>`; tb.appendChild(tr); continue; }
+    let z = fnum(q.z); const y = fnum(q.y), o = fnum(q.o), hi = fnum(q.h), lo = fnum(q.l);
+    if (z === null){ const b = fnum((q.b||'').split('_')[0]), a = fnum((q.a||'').split('_')[0]); z = b && a ? (a + b) / 2 : (b || a || y); }  // 暫無成交：用買賣中價
+    const key = q.d + ':' + it.code; const t = +q.tlong || Date.now();
+    liveHist[key] = liveHist[key] || []; const hst = liveHist[key]; if (!hst.length || hst[hst.length-1][0] !== t) hst.push([t, z]); if (hst.length > 400) hst.shift();
+    const chg = y ? (z - y) / y : null;
+    let pnl = '—', st = '<span class="muted">—</span>';
+    if (it.buy){
+      const r = z / it.buy - 1; pnl = `<span class="${r >= 0 ? 'pos' : 'neg'}">${spct(r)}</span>`;
+      const slP = it.buy * (1 - P.sl), armP = it.buy * (1 + P.arm);
+      if (z <= slP) st = `<span class="tag critical">🔴 已跌破停損 ${+slP.toFixed(2)}</span>`;
+      else if (z <= slP * 1.02) st = `<span class="tag warn">🟠 距停損 ${pct(z / slP - 1, 1)}</span>`;
+      else if (z >= armP) st = (y !== null && z <= y) ? `<span class="tag critical">🟢 已過 +${(P.arm*100).toFixed(0)}%，今天沒續漲→明早賣</span>` : `<span class="tag good">🟢 已過 +${(P.arm*100).toFixed(0)}%，收盤需＞${y}</span>`;
+      else st = `<span class="muted">距停損 ${pct(z / slP - 1, 1)}</span>`;
+    } else if (chg !== null && Math.abs(chg) >= 0.09) st = `<span class="tag warn">接近漲跌停</span>`;
+    tr.innerHTML = `<td class="nm"><b>${q.n}</b><br><small class="muted">${it.code}${it.buy ? ' 買' + it.buy : ''}</small></td>
+      <td><span class="px">${z}</span><br><small class="muted">${lo ?? '-'}–${hi ?? '-'}</small></td>
+      <td><span class="${chg >= 0 ? 'pos' : 'neg'}">${chg === null ? '—' : spct(chg)}</span>${it.buy ? '<br>' + pnl : ''}<br>${spark(hst, 48, 14)}</td>
+      <td class="st">${st}</td>`;
+    tb.appendChild(tr); lastT = q.t || lastT;
+  }
+  const now = new Date().toLocaleTimeString('zh-TW', {hour12:false, timeZone:'Asia/Taipei'});
+  $('live-time').textContent = `資料時間 ${lastT || '—'} · 更新於 ${now}`;
+  $('live-status').textContent = open ? (liveAuto ? '開盤中，每 10 秒自動更新。' : '開盤中（自動更新已關）。') : '已收盤，顯示最後一筆。';
+}
+function liveSchedule(){
+  clearInterval(liveTimer);
+  liveTimer = setInterval(() => { if (liveAuto && marketOpen() && parseLiveList().length && proxyBase() && !document.hidden) liveRefresh(false); }, 10000);
+}
+(function liveInit(){
+  $('live-list').value = lsGet('tm:live', ''); $('proxy-url').value = lsGet('tm:proxy', '');
+  $('live-refresh').addEventListener('click', () => liveRefresh(true));
+  $('live-auto').addEventListener('click', () => { liveAuto = !liveAuto; $('live-auto').textContent = `開盤時每 10 秒自動更新：${liveAuto ? '開' : '關'}`; });
+  $('live-list').addEventListener('change', () => liveRefresh(true));
+  $('proxy-url').addEventListener('change', () => liveRefresh(true));
+  const open = marketOpen(); $('mkt-pill').textContent = open ? '開盤中' : '已收盤'; $('mkt-pill').className = 'pill' + (open ? ' on' : '');
+  if (parseLiveList().length && proxyBase()) setTimeout(() => liveRefresh(false), 1500);
+  liveSchedule();
+})();
+
 // ====================== 全市場掃描 ======================
 let shown = 50, custom = null; // custom: {code: s} 重算後的結果
 function filtered(){
   if (!SCAN) return [];
   const mkt = $('f-mkt').value, pmax = parseFloat($('f-price').value), amin = parseFloat($('f-amt').value) || 0;
   const codes = $('f-codes').value.split(/[^\d]+/).filter(c => /^\d{4}$/.test(c));
-  let rows = SCAN.filter(s => (!mkt || s.m === mkt) && (!(pmax > 0) || s.p <= pmax) && s.a >= amin && (!codes.length || codes.includes(s.c)));
+  const ta = $('f-ta').value;
+  let rows = SCAN.filter(s => (!mkt || s.m === mkt) && (!(pmax > 0) || s.p <= pmax) && s.a >= amin && (!codes.length || codes.includes(s.c)) && (!ta || s.st === ta));
   if (custom) rows = rows.map(s => custom[s.c] ? Object.assign({}, s, custom[s.c]) : s);
   const k = $('f-sort').value;
   const grp = s => (s.sl < 0.30 && s.ev > 0) ? 0 : s.sl < 0.30 ? 1 : s.sl < 0.50 ? 2 : 3;
@@ -391,7 +593,7 @@ function renderScanTable(){
     const lv = riskLevel(r.sl);
     const tag = lv === 'good' && r.ev > 0 ? '<span class="tag good">🟢 低</span>' : lv === 'good' ? '<span class="tag neutral">🟢 低・EV負</span>' : lv === 'warn' ? '<span class="tag warn">🟡 中</span>' : '<span class="tag critical">🔴 太緊</span>';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b>${r.n}</b><br><small>${r.c}${r.m==='TWO'?' 櫃':''} · ${r.a >= 1000 ? (r.a/1000).toFixed(1)+'億' : r.a.toFixed(0)+'百萬'}</small></td><td>${r.p}</td><td>${pct(r.sl,0)}</td><td class="${r.ev>=0?'pos':'neg'}">${spct(r.ev)}</td><td>${tag}${r._custom?'<br><small>新規則</small>':''}</td>`;
+    tr.innerHTML = `<td><b>${r.n}</b><br><small>${r.c}${r.m==='TWO'?' 櫃':''} · ${r.a >= 1000 ? (r.a/1000).toFixed(1)+'億' : r.a.toFixed(0)+'百萬'}</small></td><td>${r.p}</td><td>${pct(r.sl,0)}</td><td class="${r.ev>=0?'pos':'neg'}">${spct(r.ev)}</td><td>${tag}<br><small class="muted">${TA_NAME[r.st] || ''}${r.adx ? ' ADX' + r.adx.toFixed(0) : ''}</small>${r._custom?'<br><small>新規則</small>':''}</td>`;
     tr.style.cursor = 'pointer';
     tr.addEventListener('click', () => { $('code').value = r.c; $('buy').value = ''; $('run').click(); window.scrollTo({top:0, behavior:'smooth'}); });
     tb.appendChild(tr);
@@ -399,7 +601,13 @@ function renderScanTable(){
   $('more').hidden = rows.length <= shown;
   $('scan-status').textContent = `符合條件 ${rows.length} 檔，顯示前 ${Math.min(shown, rows.length)} 檔${custom ? '（部分已用新規則重算）' : ''}。`;
 }
-for (const id of ['f-mkt','f-price','f-amt','f-sort','f-codes']) $(id).addEventListener('input', () => { shown = 50; renderScanTable(); });
+for (const id of ['f-mkt','f-price','f-amt','f-sort','f-codes','f-ta']) $(id).addEventListener('input', () => { shown = 50; renderScanTable(); });
+$('f-ta').addEventListener('input', () => {
+  const st = $('f-ta').value, el = $('ta-filter-note');
+  if (!st){ el.hidden = true; return; }
+  const s = TA_STATS.states[st], a = TA_STATS.states.all; el.hidden = false;
+  el.innerHTML = `<b>${s.name}</b> 在過去的實際結果（${TA_STATS.universe}，${TA_STATS.period}，${s.A.n.toLocaleString()} 筆）：<br>停損10／啟動10／20天：勝率 ${pct(s.A.win,0)}（全部 ${pct(a.A.win,0)}）、平均 ${spct(s.A.avg)}、停損率 ${pct(s.A.sl,0)}<br>停損15／啟動15／30天：勝率 ${pct(s.B.win,0)}（全部 ${pct(a.B.win,0)}）、平均 ${spct(s.B.avg)}、停損率 ${pct(s.B.sl,0)}`;
+});
 $('more').addEventListener('click', () => { shown += 50; renderScanTable(); });
 $('rescan').addEventListener('click', async () => {
   const rows = filtered().slice(0, 400);
